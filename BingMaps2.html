@@ -1,0 +1,82 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" >
+    <head>
+		<title>Bing Maps</title>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+		<script src="http://code.jquery.com/jquery-latest.js" type="text/javascript"></script>
+		<script src="rx.js" type="text/javascript"></script>
+        <script src="rx.jquery.js" type="text/javascript"></script>
+		<script type="text/javascript" src="http://ecn.dev.virtualearth.net/mapcontrol/mapcontrol.ashx?v=6.2"></script>
+		<script type="text/javascript">
+
+			Array.prototype.toObservable = function(scheduler) {
+				return Rx.Observable.FromArray(this, scheduler);
+			}
+
+			var customDelayScheduler = Rx.DelayedScheduler = function(delay) {
+
+				 return new Rx.Scheduler(
+				 	function(action) {
+						var id = window.setTimeout(action, delay);
+						return Rx.Disposable.Create(function() { window.clearTimeout(id); });
+					},
+					function(action, dueTime) {
+						var id = window.setTimeout(action, dueTime);
+						return Rx.Disposable.Create(function() { window.clearTimeout(id); });
+					},
+					function() {
+						return new Date().getTime();
+					});
+			}
+
+		    function searchTwitter(text) {
+                var url = "http://search.twitter.com/search.json";
+
+                return $.getJSONAsObservable(url,
+                    { rpp : 100,
+                      q : text });
+		    }
+
+		    function addPushPin(map, id, date, latitude, longitude, imageUrl, text, details) {
+
+		        try {
+		            var pinPoint = new VELatLong(latitude, longitude, 0, VEAltitudeMode.RelativeToGround);
+		            var pin = new VEPushpin(id, pinPoint, imageUrl, text, date + " " + details);
+		            map.AddPushpin(pin);
+		        } catch (err) { }
+		    }
+
+		    $(document).ready(function () {
+
+				var scheduler = new Rx.DelayedScheduler(500);
+
+		        var map = new VEMap("veMap");
+		        map.LoadMap();
+		        map.SetZoomLevel(2);
+
+				Rx.Observable.Interval(10000).Select(function () { return searchTwitter("4sq.com"); }).Switch()
+					.SelectMany(function (d) {
+						return d.data.results.toObservable(scheduler);
+					})
+					.Where(function (data) {
+						return data.geo != null;
+					})
+					.Subscribe(
+						function (data) {
+
+							var lat = data.geo.coordinates[0];
+							var lon = data.geo.coordinates[1];
+							addPushPin(map, data.id, data.created_at, lat, lon, data.profile_image_url, data.from_user, data.text);
+						},
+						function (error) {
+							alert(error);
+						});
+
+		    });
+        </script>
+    </head>
+    <body>
+		<div id="veMap" style="position:relative; width: 1000px; height: 600px;"></div>
+    </body>
+</html>
+
